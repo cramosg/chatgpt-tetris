@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tetris</title>
+  <style>
+    body {
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #000;
+      display: block;
+      margin: 0 auto;
+    }
+    #gameOverMessage {
+      position: absolute;
+      top: 200px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #000;
+      font-size: 24px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tetris</h1>
+  <canvas id="tetrisCanvas" width="240" height="480"></canvas>
+  <div>Score: <span id="score">0</span></div>
+  <div id="gameOverMessage">Game Over<br>Final Score: <span id="finalScore">0</span></div>
+  <script>
+    const canvas = document.getElementById('tetrisCanvas');
+    const ctx = canvas.getContext('2d');
+    const TILE_SIZE = 24;
+    const BOARD_WIDTH = 10;
+    const BOARD_HEIGHT = 20;
+    const KEY = {
+      LEFT: 37,
+      RIGHT: 39,
+      DOWN: 40,
+      SPACE: 32,
+      C: 67,
+      X: 88
+    };
+
+    // Tetrominoes with their shapes and colors
+    const tetrominoes = [
+      {
+        color: 'cyan',
+        shape: [
+          [1, 1, 1, 1]
+        ],
+      },
+      {
+        color: 'yellow',
+        shape: [
+          [1, 1],
+          [1, 1],
+        ],
+      },
+      {
+        color: 'purple',
+        shape: [
+          [1, 1, 0],
+          [0, 1, 1],
+        ],
+      },
+      {
+        color: 'green',
+        shape: [
+          [0, 1, 1],
+          [1, 1, 0],
+        ],
+      },
+      {
+        color: 'red',
+        shape: [
+          [1, 1, 1],
+          [0, 1, 0],
+        ],
+      },
+      // Add more tetrominoes here...
+    ];
+
+    let board = [];
+    let currentTetromino;
+    let currentTetrominoX;
+    let currentTetrominoY;
+    let gamePaused = true;
+    let gameOver = false;
+    let score = 0;
+
+    function createEmptyBoard() {
+      return Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(0));
+    }
+
+    function drawTile(x, y, color, ctx) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      ctx.strokeStyle = 'black';
+      ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    }
+
+    function drawBoard() {
+      for (let y = 0; y < BOARD_HEIGHT; y++) {
+        for (let x = 0; x < BOARD_WIDTH; x++) {
+          if (board[y][x]) {
+            drawTile(x, y, board[y][x], ctx);
+          }
+        }
+      }
+    }
+
+    function drawTetromino(tetromino, x, y, ctx) {
+      ctx.fillStyle = tetromino.color;
+      for (let tetrominoY = 0; tetrominoY < tetromino.shape.length; tetrominoY++) {
+        for (let tetrominoX = 0; tetrominoX < tetromino.shape[tetrominoY].length; tetrominoX++) {
+          if (tetromino.shape[tetrominoY][tetrominoX]) {
+            drawTile(x + tetrominoX, y + tetrominoY, tetromino.color, ctx);
+          }
+        }
+      }
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function isColliding(board, tetromino, tetrominoX, tetrominoY) {
+      for (let y = 0; y < tetromino.shape.length; y++) {
+        for (let x = 0; x < tetromino.shape[y].length; x++) {
+          if (tetromino.shape[y][x]) {
+            const boardY = y + tetrominoY;
+            const boardX = x + tetrominoX;
+            if (boardY >= BOARD_HEIGHT || boardX < 0 || boardX >= BOARD_WIDTH || board[boardY][boardX]) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function placeTetromino() {
+      for (let y = 0; y < currentTetromino.shape.length; y++) {
+        for (let x = 0; x < currentTetromino.shape[y].length; x++) {
+          if (currentTetromino.shape[y][x]) {
+            board[y + currentTetrominoY][x + currentTetrominoX] = currentTetromino.color;
+          }
+        }
+      }
+    }
+
+    function rotateTetromino() {
+      const originalTetromino = currentTetromino.shape;
+      const newTetromino = [];
+      for (let y = 0; y < originalTetromino[0].length; y++) {
+        newTetromino.push([]);
+        for (let x = originalTetromino.length - 1; x >= 0; x--) {
+          newTetromino[y].push(originalTetromino[x][y]);
+        }
+      }
+      currentTetromino.shape = newTetromino;
+      if (isColliding(board, currentTetromino, currentTetrominoX, currentTetrominoY)) {
+        currentTetromino.shape = originalTetromino;
+      }
+    }
+
+    function randomTetromino() {
+      return tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
+    }
+
+    function resetTetromino() {
+      currentTetromino = randomTetromino();
+      currentTetrominoX = Math.floor(BOARD_WIDTH / 2) - Math.floor(currentTetromino.shape[0].length / 2);
+      currentTetrominoY = 0;
+      if (isColliding(board, currentTetromino, currentTetrominoX, currentTetrominoY)) {
+        // Game over
+        gameOver = true;
+        gamePaused = true;
+        showGameOverMessage();
+      }
+    }
+
+    function clearFullLines() {
+      let linesCleared = 0;
+      for (let y = BOARD_HEIGHT - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell !== 0)) {
+          board.splice(y, 1);
+          board.unshift(Array(BOARD_WIDTH).fill(0));
+          linesCleared++;
+        }
+      }
+      if (linesCleared > 0) {
+        score += linesCleared * 10;
+        updateScore();
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (gameOver) return;
+      switch (event.keyCode) {
+        case KEY.LEFT:
+          moveTetromino(-1, 0);
+          break;
+        case KEY.RIGHT:
+          moveTetromino(1, 0);
+          break;
+        case KEY.DOWN:
+          moveTetromino(0, 1);
+          break;
+        case KEY.SPACE:
+          hardDropTetromino();
+          break;
+        case KEY.C:
+          rotateTetromino();
+          break;
+        case KEY.X:
+          moveTetromino(0, 1); // Move one step down, faster than normal
+          break;
+      }
+    }
+
+    function moveTetromino(deltaX, deltaY) {
+      currentTetrominoX += deltaX;
+      currentTetrominoY += deltaY;
+      if (isColliding(board, currentTetromino, currentTetrominoX, currentTetrominoY)) {
+        currentTetrominoX -= deltaX;
+        currentTetrominoY -= deltaY;
+        if (deltaY !== 0) {
+          placeTetromino();
+          resetTetromino();
+          clearFullLines();
+        }
+      }
+      clearCanvas();
+      drawBoard();
+      drawTetromino(currentTetromino, currentTetrominoX, currentTetrominoY, ctx);
+    }
+
+    function hardDropTetromino() {
+      while (!isColliding(board, currentTetromino, currentTetrominoX, currentTetrominoY)) {
+        currentTetrominoY++;
+      }
+      currentTetrominoY--;
+      placeTetromino();
+      resetTetromino();
+      clearFullLines();
+      clearCanvas();
+      drawBoard();
+      drawTetromino(currentTetromino, currentTetrominoX, currentTetrominoY, ctx);
+    }
+
+    function showGameOverMessage() {
+      const gameOverMessage = document.getElementById('gameOverMessage');
+      gameOverMessage.style.display = 'block';
+      const finalScore = document.getElementById('finalScore');
+      finalScore.textContent = score;
+    }
+
+    function updateScore() {
+      document.getElementById('score').textContent = score;
+    }
+
+    function startGame() {
+      board = createEmptyBoard();
+      currentTetrominoX = Math.floor(BOARD_WIDTH / 2);
+      currentTetrominoY = 0;
+      gamePaused = true;
+      gameOver = false;
+      score = 0;
+      updateScore();
+      resetTetromino();
+      drawBoard();
+      drawTetromino(currentTetromino, currentTetrominoX, currentTetrominoY, ctx);
+      gameLoop();
+    }
+
+    function gameLoop() {
+      if (!gamePaused) {
+        moveTetromino(0, 1);
+      }
+      requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    startGame();
+    document.getElementById('tetrisCanvas').addEventListener('click', function() {
+      if (gamePaused && !gameOver) {
+        gamePaused = false;
+      }
+    });
+  </script>
+</body>
+</html>
